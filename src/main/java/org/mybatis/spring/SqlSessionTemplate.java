@@ -323,6 +323,7 @@ public class SqlSessionTemplate implements SqlSession, DisposableBean {
 
   /**
    * {@inheritDoc}
+   * 这里不允许你手动提交了，mybatis最后调用的是Connection对象的commit
    */
   @Override
   public void commit(boolean force) {
@@ -418,6 +419,7 @@ public class SqlSessionTemplate implements SqlSession, DisposableBean {
    * Proxy needed to route MyBatis method calls to the proper SqlSession got from Spring's Transaction Manager It also
    * unwraps exceptions thrown by {@code Method#invoke(Object, Object...)} to pass a {@code PersistenceException} to the
    * {@code PersistenceExceptionTranslator}.
+   * mybatis sqlSession执行方法最终都会经过这个代理
    */
   private class SqlSessionInterceptor implements InvocationHandler {
     @Override
@@ -426,6 +428,8 @@ public class SqlSessionTemplate implements SqlSession, DisposableBean {
           SqlSessionTemplate.this.executorType, SqlSessionTemplate.this.exceptionTranslator);
       try {
         Object result = method.invoke(sqlSession, args);
+        // TODO： 这里是如何判别这个sqlSession需要提交的
+        // 芋道的解释是如果非Spring托管的SQLSession对象，则田炯事务
         if (!isSqlSessionTransactional(sqlSession, SqlSessionTemplate.this.sqlSessionFactory)) {
           // force commit even on non-dirty sessions because some databases require
           // a commit/rollback before calling close()
@@ -434,10 +438,17 @@ public class SqlSessionTemplate implements SqlSession, DisposableBean {
         return result;
       } catch (Throwable t) {
         Throwable unwrapped = unwrapThrowable(t);
+        // 如果是mybatis抛出的异常，则进行转换
         if (SqlSessionTemplate.this.exceptionTranslator != null && unwrapped instanceof PersistenceException) {
           // release the connection to avoid a deadlock if the translator is no loaded. See issue #22
+          // TODO： 释放连接避免死锁，如果翻译器没有加载，
+          // 如果是Spring托管的对象，减少其SQLSessionHolder的计数
+          // 如果非Spring托管的SqlSession对象，则关闭SqlSession对象
           closeSqlSession(sqlSession, SqlSessionTemplate.this.sqlSessionFactory);
+          // 置空，避免下面final又做处理
           sqlSession = null;
+          // TODO: 翻译器到底干嘛的
+          // 转换异常
           Throwable translated = SqlSessionTemplate.this.exceptionTranslator
               .translateExceptionIfPossible((PersistenceException) unwrapped);
           if (translated != null) {
@@ -447,6 +458,7 @@ public class SqlSessionTemplate implements SqlSession, DisposableBean {
         throw unwrapped;
       } finally {
         if (sqlSession != null) {
+          // 最后关闭连接
           closeSqlSession(sqlSession, SqlSessionTemplate.this.sqlSessionFactory);
         }
       }
