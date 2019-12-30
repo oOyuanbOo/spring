@@ -485,6 +485,7 @@ public class SqlSessionFactoryBean
    * @return SqlSessionFactory
    * @throws Exception
    *           if configuration is failed
+   *           主要的方法就在这里了
    */
   protected SqlSessionFactory buildSqlSessionFactory() throws Exception {
 
@@ -493,45 +494,50 @@ public class SqlSessionFactoryBean
     XMLConfigBuilder xmlConfigBuilder = null;
     if (this.configuration != null) {
       targetConfiguration = this.configuration;
+      // mybatis-config.xml文件里设置的properties，这里会将spring中配置的properties追加进去
       if (targetConfiguration.getVariables() == null) {
         targetConfiguration.setVariables(this.configurationProperties);
       } else if (this.configurationProperties != null) {
         targetConfiguration.getVariables().putAll(this.configurationProperties);
       }
+      // configLocation mybatis-config xml的文件位置
     } else if (this.configLocation != null) {
       xmlConfigBuilder = new XMLConfigBuilder(this.configLocation.getInputStream(), null, this.configurationProperties);
+      // 这里并没有parse，所有只有properties的内容被设置到configuration
       targetConfiguration = xmlConfigBuilder.getConfiguration();
     } else {
+      // 如果没设置configuration对象，也没有给出mybatis-config的配置文件，就使用默认配置
       LOGGER.debug(
           () -> "Property 'configuration' or 'configLocation' not specified, using default MyBatis Configuration");
       targetConfiguration = new Configuration();
       Optional.ofNullable(this.configurationProperties).ifPresent(targetConfiguration::setVariables);
     }
-
+    // ofNullable T为任意，可以为空，ifPresent 就是不为空的话
     Optional.ofNullable(this.objectFactory).ifPresent(targetConfiguration::setObjectFactory);
     Optional.ofNullable(this.objectWrapperFactory).ifPresent(targetConfiguration::setObjectWrapperFactory);
     Optional.ofNullable(this.vfs).ifPresent(targetConfiguration::setVfsImpl);
 
+    // 注册别名，这些配置文件都是在那里设置的，来源是哪里
     if (hasLength(this.typeAliasesPackage)) {
       scanClasses(this.typeAliasesPackage, this.typeAliasesSuperType).stream()
           .filter(clazz -> !clazz.isAnonymousClass()).filter(clazz -> !clazz.isInterface())
           .filter(clazz -> !clazz.isMemberClass()).forEach(targetConfiguration.getTypeAliasRegistry()::registerAlias);
     }
-
+    // 类似
     if (!isEmpty(this.typeAliases)) {
       Stream.of(this.typeAliases).forEach(typeAlias -> {
         targetConfiguration.getTypeAliasRegistry().registerAlias(typeAlias);
         LOGGER.debug(() -> "Registered type alias: '" + typeAlias + "'");
       });
     }
-
+    // 设置插件
     if (!isEmpty(this.plugins)) {
       Stream.of(this.plugins).forEach(plugin -> {
         targetConfiguration.addInterceptor(plugin);
         LOGGER.debug(() -> "Registered plugin: '" + plugin + "'");
       });
     }
-
+    // 设置类型控制器
     if (hasLength(this.typeHandlersPackage)) {
       scanClasses(this.typeHandlersPackage, TypeHandler.class).stream().filter(clazz -> !clazz.isAnonymousClass())
           .filter(clazz -> !clazz.isInterface()).filter(clazz -> !Modifier.isAbstract(clazz.getModifiers()))
@@ -544,7 +550,7 @@ public class SqlSessionFactoryBean
         LOGGER.debug(() -> "Registered type handler: '" + typeHandler + "'");
       });
     }
-
+    // 数据库驱动
     if (!isEmpty(this.scriptingLanguageDrivers)) {
       Stream.of(this.scriptingLanguageDrivers).forEach(languageDriver -> {
         targetConfiguration.getLanguageRegistry().register(languageDriver);
@@ -553,7 +559,7 @@ public class SqlSessionFactoryBean
     }
     Optional.ofNullable(this.defaultScriptingLanguageDriver)
         .ifPresent(targetConfiguration::setDefaultScriptingLanguage);
-
+    // 用的是哪个数据库
     if (this.databaseIdProvider != null) {// fix #64 set databaseId before parse mapper xmls
       try {
         targetConfiguration.setDatabaseId(this.databaseIdProvider.getDatabaseId(this.dataSource));
@@ -561,11 +567,12 @@ public class SqlSessionFactoryBean
         throw new NestedIOException("Failed getting a databaseId", e);
       }
     }
-
+    // 设置缓存
     Optional.ofNullable(this.cache).ifPresent(targetConfiguration::addCache);
 
     if (xmlConfigBuilder != null) {
       try {
+        // 前面说没有parse的，人家这里parse了，为毛呢，因为好多对象要先传完
         xmlConfigBuilder.parse();
         LOGGER.debug(() -> "Parsed configuration file: '" + this.configLocation + "'");
       } catch (Exception ex) {
@@ -578,7 +585,7 @@ public class SqlSessionFactoryBean
     targetConfiguration.setEnvironment(new Environment(this.environment,
         this.transactionFactory == null ? new SpringManagedTransactionFactory() : this.transactionFactory,
         this.dataSource));
-
+    // 解析mapper.xml
     if (this.mapperLocations != null) {
       if (this.mapperLocations.length == 0) {
         LOGGER.warn(() -> "Property 'mapperLocations' was specified but matching resources are not found.");

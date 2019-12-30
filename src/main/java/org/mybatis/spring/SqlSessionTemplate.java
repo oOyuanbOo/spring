@@ -70,6 +70,7 @@ import org.springframework.dao.support.PersistenceExceptionTranslator;
  *
  * @see SqlSessionFactory
  * @see MyBatisExceptionTranslator
+ * 重新实现sqlSession接口，取代mybatis自带的DefaultSqlSession，因为它是线程不安全
  */
 public class SqlSessionTemplate implements SqlSession, DisposableBean {
 
@@ -117,6 +118,7 @@ public class SqlSessionTemplate implements SqlSession, DisposableBean {
    *          an executor type on session
    * @param exceptionTranslator
    *          a translator of exception
+   *          这里相当于给mybatis的SqlSession生成了一个代理类。来看看代理类里面都搞了哪些东西
    */
   public SqlSessionTemplate(SqlSessionFactory sqlSessionFactory, ExecutorType executorType,
       PersistenceExceptionTranslator exceptionTranslator) {
